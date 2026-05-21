@@ -1,0 +1,52 @@
+// android-tv/app/src/test/java/app/ouie/screens/heartbeat/HeartbeatSchedulerStubs.kt
+// Plan 5 Phase 3 Task 21 — minimal stubs so HeartbeatScheduler can be
+// instantiated for narrow unit tests without standing up the real ConfigApi /
+// ConfigStore / PlaybackDirector / HeartbeatApi graph. The stubs throw on
+// every method that's not exercised by these tests, so accidental coverage
+// expansion fails loudly.
+package app.ouie.screens.heartbeat
+
+import app.ouie.screens.config.ConfigDto
+import app.ouie.screens.config.ConfigRepository
+import app.ouie.screens.config.ConfigStore
+import app.ouie.screens.net.ConfigApi
+import app.ouie.screens.net.HeartbeatApi
+import app.ouie.screens.playback.PlaybackStateSnapshot
+import app.ouie.screens.playback.PlaybackStateSource
+import app.ouie.screens.preload.PreloadStatus
+import app.ouie.screens.preload.PreloadStatusSource
+import kotlinx.serialization.json.Json
+import retrofit2.Response
+import java.io.File
+
+internal object StubHeartbeatApi : HeartbeatApi {
+    override suspend fun post(body: HeartbeatPayload): Response<Unit> {
+        throw UnsupportedOperationException("stub: HeartbeatApi.post not exercised by these tests")
+    }
+}
+
+internal object StubPlaybackStateSource : PlaybackStateSource {
+    override fun snapshot(): PlaybackStateSnapshot = PlaybackStateSnapshot(null, "no_content")
+}
+
+internal object StubPreloadStatusSource : PreloadStatusSource {
+    override fun current(): PreloadStatus? = null
+}
+
+internal object StubConfigApi : ConfigApi {
+    override suspend fun fetch(ifNoneMatch: String?): Response<ConfigDto> {
+        throw UnsupportedOperationException("stub: ConfigApi.fetch not exercised by these tests")
+    }
+}
+
+/**
+ * Plan 5 Task 21 — per-call factory. Each call builds a ConfigRepository backed
+ * by a fresh tmpdir, registered for shutdown-hook cleanup. Factory (not a shared
+ * `val`) because ConfigRepository holds mutable StateFlow and we want every test
+ * to start from a clean slate — no cross-test contamination.
+ */
+internal fun newStubConfigRepository(): ConfigRepository {
+    val dir = File(System.getProperty("java.io.tmpdir"), "stub-config-${System.nanoTime()}")
+    Runtime.getRuntime().addShutdownHook(Thread { dir.deleteRecursively() })
+    return ConfigRepository(api = StubConfigApi, store = ConfigStore(dir, Json))
+}
