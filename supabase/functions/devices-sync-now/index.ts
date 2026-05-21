@@ -5,8 +5,17 @@
 // the caller can't see the device/group, the row lookup yields no data and we
 // respond 403 without ever touching FCM.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { sendFcmSync } from "../_shared/fcm.ts";
+import { sendFcmSync, type FcmDispatchResult } from "../_shared/fcm.ts";
 import { serviceRoleClient } from "../_shared/supabase.ts";
+
+/** Returns `{messageId}` on success, `{error}` in every other case. */
+function interpretFcmResult(
+  r: PromiseSettledResult<FcmDispatchResult> | undefined,
+): { messageId: string } | { error: string } {
+  if (!r) return { error: "no result" };
+  if (r.status === "rejected") return { error: `rejected: ${String(r.reason ?? "unknown")}` };
+  return r.value.ok ? { messageId: r.value.messageId } : { error: r.value.error };
+}
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("method", { status: 405 });
@@ -41,7 +50,8 @@ Deno.serve(async (req) => {
     if (data.fcm_token) targetTokens.push(data.fcm_token);
   } else if (groupId) {
     const { data, error } = await userClient.from("device_group_members")
-      .select("device_id, devices!inner(fcm_token)").eq("device_group_id", groupId);
+      .select("device_id, devices!inner(fcm_token)").eq("device_group_id", groupId)
+      .order("device_id");
     if (error) return new Response("db: " + error.message, { status: 500 });
     for (const row of data ?? []) {
       const token = (row as { devices?: { fcm_token?: string | null } }).devices?.fcm_token;
@@ -74,12 +84,46 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Fire-and-forget. We don't want to block the dashboard on FCM latency, but
-  // we do want a breadcrumb when sends fail so silent delivery problems are
-  // visible in edge-function logs.
+  // Plan 5 Task 18: capture FCM dispatch outcome per-token and stamp the
+  // result onto the originating device row(s). Server timestamp is captured
+  // before send (already in `dispatchedAt`). Single-device path stamps that
+  // device; group path zips results back to member device IDs.
   const results = await Promise.allSettled(targetTokens.map((t) => sendFcmSync(t)));
-  for (const r of results) {
-    if (r.status === "rejected") console.error("sendFcmSync rejected:", r.reason);
+  if (deviceId) {
+    const update: Record<string, string | null> = {
+      last_fcm_dispatched_at: dispatchedAt,
+      last_fcm_dispatch_message_id: null,
+      last_fcm_dispatch_error: null,
+    };
+    const outcome = interpretFcmResult(results[0]);
+    if ("messageId" in outcome) update.last_fcm_dispatch_message_id = outcome.messageId;
+    else update.last_fcm_dispatch_error = outcome.error;
+    await svc.from("devices").update(update).eq("id", deviceId);
+  } else if (groupId) {
+    // Group send: zip token results back to device IDs in the order we built them.
+    const memberIds = await userClient.from("device_group_members")
+      .select("device_id, devices!inner(fcm_token)")
+      .eq("device_group_id", groupId)
+      .order("device_id");
+    const ordered = (memberIds.data ?? [])
+      .map((row) =>
+        ({
+          deviceId: (row as { device_id: string }).device_id,
+          token: (row as { devices?: { fcm_token?: string | null } }).devices?.fcm_token ?? null,
+        })
+      )
+      .filter((m) => typeof m.token === "string" && m.token.length > 0);
+    for (let i = 0; i < ordered.length; i++) {
+      const update: Record<string, string | null> = {
+        last_fcm_dispatched_at: dispatchedAt,
+        last_fcm_dispatch_message_id: null,
+        last_fcm_dispatch_error: null,
+      };
+      const outcome = interpretFcmResult(results[i]);
+      if ("messageId" in outcome) update.last_fcm_dispatch_message_id = outcome.messageId;
+      else update.last_fcm_dispatch_error = outcome.error;
+      await svc.from("devices").update(update).eq("id", ordered[i].deviceId);
+    }
   }
   return new Response(null, { status: 202 });
 });

@@ -34,10 +34,13 @@ class HeartbeatScheduler(
     private val fcmReceiptTracker: FcmReceiptTracker,
     private val playbackStateSource: PlaybackStateSource,
     private val intervalMs: Long = 60_000,
+    private val nowMs: () -> Long = SystemClock::elapsedRealtime,
 ) {
 
     private var job: Job? = null
-    private val processStartRealtime = SystemClock.elapsedRealtime()
+    // Single-writer: only touched from the sendOne() coroutine. No @Volatile needed.
+    private var firstAfterBoot: Boolean = true
+    private val processStartRealtime = nowMs()
 
     fun start() {
         if (job?.isActive == true) return
@@ -54,8 +57,31 @@ class HeartbeatScheduler(
         job = null
     }
 
+    /**
+     * Plan 5 Task 21: speculative FCM-socket-stickiness mitigation. On the
+     * first heartbeat after process start, force a token re-acquire — exercises
+     * the GMS path which (per Plan 4.1 follow-up hypothesis) may unstick post-reboot
+     * scenarios where the receive socket fails to re-establish on TCL Google
+     * TV. Subsequent calls are no-ops. Failures swallowed (we don't want one
+     * bad GMS call to abort the heartbeat itself).
+     *
+     * Internal visibility so unit tests can drive this in isolation.
+     */
+    internal suspend fun maybeForceFcmRefresh() {
+        if (!firstAfterBoot) return
+        firstAfterBoot = false
+        try {
+            fcmTokenSource.forceRefresh()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            // Swallow — heartbeat will carry whatever cached() returns.
+        }
+    }
+
     private suspend fun sendOne() {
-        val uptimeSeconds = (SystemClock.elapsedRealtime() - processStartRealtime) / 1000
+        maybeForceFcmRefresh()
+        val uptimeSeconds = (nowMs() - processStartRealtime) / 1000
         val pick = pickProvider()
         val cacheInfo = pick?.let {
             CacheStorageInfoBuilder.buildFrom(it, preloadStatusSource.current())
