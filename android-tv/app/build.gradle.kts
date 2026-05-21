@@ -8,23 +8,42 @@ plugins {
 }
 
 android {
-    namespace = "com.ouie.signage"
+    namespace = "app.ouie.screens"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.ouie.signage"
+        applicationId = "app.ouie.screens"
         minSdk = 26              // Android TV 8.0 floor; current F&B TVs are newer
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.5.0-p5"
+        versionCode = 9
+        versionName = "1.0.0-ouie"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Baked at build time from env or gradle.properties (see README for override).
+        // Defaults to ouie PROD; override locally with -PSUPABASE_URL=... for STG smoke.
         val supabaseUrl = (project.findProperty("SUPABASE_URL") as String?)
             ?: System.getenv("SUPABASE_URL")
-            ?: "https://swhwrlpoqjijxcvywzto.supabase.co"
+            ?: "https://glvoigzqwtpgkemnaubo.supabase.co"
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+    }
+
+    signingConfigs {
+        // Pre-launch deployment uses the Android debug keystore to sign release
+        // builds. This unblocks sideload-and-go for the first PROD TV without
+        // forcing a release-keystore provisioning step. Sunset condition: at
+        // first non-owner onboard (see CLAUDE.md Project Status), generate a
+        // dedicated release keystore (`keytool -genkey ...`) and switch this
+        // block to read from a keystore.properties file. Switching keystores
+        // requires uninstall+reinstall of any deployed APKs (Android refuses
+        // in-place upgrades across signature mismatches); one re-pair is the
+        // cost. For the current single-TV PROD deployment, that's acceptable.
+        create("debugKeystore") {
+            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
@@ -33,6 +52,7 @@ android {
             isMinifyEnabled = false
         }
         release {
+            signingConfig = signingConfigs.getByName("debugKeystore")
             isMinifyEnabled = false                // no obfuscation in v1 — logs readable
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
