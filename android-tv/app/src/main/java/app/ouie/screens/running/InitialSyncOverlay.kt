@@ -28,10 +28,11 @@ import app.ouie.screens.R
 
 @Composable
 fun InitialSyncOverlay(message: String = "Syncing menu…", showSpinner: Boolean = true) {
+    val copper = colorResource(id = R.color.brand_copper)
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(colorResource(id = R.color.brand_green)),
+            .background(colorResource(id = R.color.brand_paper)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -44,11 +45,11 @@ fun InitialSyncOverlay(message: String = "Syncing menu…", showSpinner: Boolean
                 modifier = Modifier.size(192.dp),
             )
             if (showSpinner) {
-                CircularProgressIndicator(color = Color.White)
+                CircularProgressIndicator(color = copper)
             } else {
                 Spacer(modifier = Modifier.height(48.dp))
             }
-            Text(text = message, color = Color.White)
+            Text(text = message, color = copper)
         }
     }
 }

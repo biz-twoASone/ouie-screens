@@ -10,8 +10,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
+import app.ouie.screens.R
 import app.ouie.screens.running.InitialSyncOverlay
 import kotlinx.coroutines.flow.StateFlow
 
@@ -46,12 +48,10 @@ fun PlaybackScreen(
 
 @Composable
 private fun PreparingScreen() {
-    // Spec §6.3: customer-visible transient screen during cold start or post-switch
-    // while the new playlist's media is still downloading.
     Box(
-        Modifier.fillMaxSize().background(Color.Black),
+        Modifier.fillMaxSize().background(colorResource(id = R.color.brand_paper)),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = "Preparing content…", color = Color(0xFFAAAAAA), fontSize = 20.sp)
+        Text(text = "Preparing content…", color = colorResource(id = R.color.brand_copper), fontSize = 20.sp)
     }
 }
