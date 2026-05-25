@@ -60,9 +60,9 @@ class PairingRepository(
                 "paired" -> {
                     val at = body.access_token ?: return ClaimResult.PickupConsumed
                     val rt = body.refresh_token ?: return ClaimResult.PickupConsumed
-                    val did = body.device_id ?: return ClaimResult.PickupConsumed
+                    val sid = body.screen_id ?: return ClaimResult.PickupConsumed
                     val exp = body.expires_in ?: 3600
-                    return ClaimResult.Paired(DeviceTokens(at, rt, did, exp))
+                    return ClaimResult.Paired(DeviceTokens(at, rt, sid, exp))
                 }
                 "paired_pickup_consumed" -> return ClaimResult.PickupConsumed
                 else -> return ClaimResult.Error(RuntimeException("unknown status: ${body.status}"))

@@ -36,7 +36,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        tokenStore.loadSync()?.let { appState.toRunning(it.deviceId) }
+        tokenStore.loadSync()?.let { appState.toRunning(it.screenId) }
         setContent { SignageRoot(appState) }
     }
 }
@@ -57,7 +57,7 @@ private fun SignageRoot(appState: AppStateHolder) {
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         when (val s = state) {
             AppState.Pairing -> PairingScreen()
-            is AppState.Running -> RunningScreen(deviceId = s.deviceId)
+            is AppState.Running -> RunningScreen(screenId = s.screenId)
             is AppState.Error -> ErrorScreen(
                 kind = s.kind,
                 onRetry = { appState.recoverToPairing() },

@@ -2,8 +2,14 @@
 package app.ouie.screens.playback
 
 sealed interface PlaybackState {
-    /** No rule matches and no fallback — show "No content configured". */
-    data object NoContent : PlaybackState
+    /** Config not yet fetched — initial sync in progress. */
+    data object Syncing : PlaybackState
+
+    /** Config fetched but no schedule rule resolves a playlist for this screen. */
+    data object NoPlaylist : PlaybackState
+
+    /** A resolved playlist exists but has zero items. */
+    data object EmptyPlaylist : PlaybackState
 
     /**
      * A playlist is desired but not fully cached yet. We're either starting fresh
@@ -18,12 +24,6 @@ sealed interface PlaybackState {
         val playlistId: String,
         val index: Int,
         val item: PlaybackItem,
-        /**
-         * Monotonic counter incremented by PlaybackDirector.advanceItem() so
-         * StateFlow emissions are not deduped by equals() when a single-item
-         * playlist loops. Preserved by tick() when the resolved item is
-         * unchanged so 1Hz ticks don't cause ExoPlayer restarts.
-         */
         val generation: Long,
     ) : PlaybackState
 }

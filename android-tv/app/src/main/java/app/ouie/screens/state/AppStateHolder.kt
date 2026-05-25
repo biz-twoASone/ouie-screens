@@ -13,8 +13,8 @@ class AppStateHolder {
     private val _state = MutableStateFlow<AppState>(AppState.Pairing)
     val state: StateFlow<AppState> = _state.asStateFlow()
 
-    fun toRunning(deviceId: String) {
-        _state.value = AppState.Running(deviceId)
+    fun toRunning(screenId: String) {
+        _state.value = AppState.Running(screenId)
     }
 
     fun toError(kind: AppState.ErrorKind) {

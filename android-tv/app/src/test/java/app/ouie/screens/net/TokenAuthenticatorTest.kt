@@ -35,14 +35,14 @@ class TokenAuthenticatorTest {
             initial = DeviceTokens(
                 accessToken = "old",
                 refreshToken = "rt1",
-                deviceId = "dev-1",
+                screenId = "dev-1",
                 expiresInSeconds = 3600,
             ),
         )
         val refreshAdapter = FakeRefreshAdapter { DeviceTokens(
             accessToken = "new",
             refreshToken = "rt2",
-            deviceId = "dev-1",
+            screenId = "dev-1",
             expiresInSeconds = 3600,
         ) }
         val authenticator = TokenAuthenticator(

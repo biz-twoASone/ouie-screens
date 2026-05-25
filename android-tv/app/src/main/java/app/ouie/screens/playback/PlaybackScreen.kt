@@ -22,7 +22,9 @@ fun PlaybackScreen(
 ) {
     val s by state.collectAsState()
     when (val cur = s) {
-        PlaybackState.NoContent -> InitialSyncOverlay(message = "Syncing menu…")
+        PlaybackState.Syncing -> InitialSyncOverlay(message = "Syncing menu…")
+        PlaybackState.NoPlaylist -> InitialSyncOverlay(message = "No playlist assigned", showSpinner = false)
+        PlaybackState.EmptyPlaylist -> InitialSyncOverlay(message = "Playlist is empty", showSpinner = false)
         PlaybackState.Preparing -> PreparingScreen()
         is PlaybackState.Playing -> {
             when (cur.item.kind) {

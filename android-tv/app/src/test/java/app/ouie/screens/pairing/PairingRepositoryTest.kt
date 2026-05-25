@@ -43,7 +43,7 @@ class PairingRepositoryTest {
                 } else {
                     Response.success(PairingStatusResponse(
                         status = "paired",
-                        device_id = "dev-1",
+                        screen_id = "dev-1",
                         access_token = "at",
                         refresh_token = "rt",
                         expires_in = 3600,
@@ -55,7 +55,7 @@ class PairingRepositoryTest {
         val result = repo.observeClaim("ABC234")
         assertTrue(result is PairingRepository.ClaimResult.Paired)
         val paired = result as PairingRepository.ClaimResult.Paired
-        assertEquals("dev-1", paired.tokens.deviceId)
+        assertEquals("dev-1", paired.tokens.screenId)
         assertEquals("at", paired.tokens.accessToken)
         assertNotNull(paired.tokens.refreshToken)
     }
@@ -78,7 +78,7 @@ class PairingRepositoryTest {
             override suspend fun status(code: String) =
                 Response.success(PairingStatusResponse(
                     status = "paired_pickup_consumed",
-                    device_id = "dev-1",
+                    screen_id = "dev-1",
                 ))
         }
         val repo = PairingRepository(api, proposedName = "TV-1", pollIntervalMs = 1)
@@ -92,7 +92,7 @@ class PairingRepositoryTest {
             override suspend fun status(code: String) =
                 Response.success(PairingStatusResponse(
                     status = "paired",
-                    device_id = "dev-1",
+                    screen_id = "dev-1",
                     access_token = null,
                     refresh_token = null,
                 ))

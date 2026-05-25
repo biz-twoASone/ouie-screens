@@ -14,7 +14,7 @@ import app.ouie.screens.playback.PlaybackScreen
 import org.koin.compose.koinInject
 
 @Composable
-fun RunningScreen(deviceId: String) {
+fun RunningScreen(screenId: String) {
     val coordinator: RunningCoordinator = koinInject()
     val director by coordinator.playbackDirector.collectAsState()
     Box(Modifier.fillMaxSize().background(Color.Black)) {

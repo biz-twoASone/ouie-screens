@@ -23,16 +23,16 @@ class TokenStore(context: Context) : TokenSource {
     override fun loadSync(): DeviceTokens? {
         val refresh = prefs.getString(KEY_REFRESH, null) ?: return null
         val access = prefs.getString(KEY_ACCESS, null) ?: return null
-        val deviceId = prefs.getString(KEY_DEVICE_ID, null) ?: return null
+        val screenId = prefs.getString(KEY_SCREEN_ID, null) ?: return null
         val expiresIn = prefs.getInt(KEY_EXPIRES_IN, 3600)
-        return DeviceTokens(access, refresh, deviceId, expiresIn)
+        return DeviceTokens(access, refresh, screenId, expiresIn)
     }
 
     override fun save(tokens: DeviceTokens) {
         prefs.edit()
             .putString(KEY_ACCESS, tokens.accessToken)
             .putString(KEY_REFRESH, tokens.refreshToken)
-            .putString(KEY_DEVICE_ID, tokens.deviceId)
+            .putString(KEY_SCREEN_ID, tokens.screenId)
             .putInt(KEY_EXPIRES_IN, tokens.expiresInSeconds)
             .apply()
     }
@@ -44,7 +44,7 @@ class TokenStore(context: Context) : TokenSource {
     private companion object {
         const val KEY_REFRESH = "refresh_token"
         const val KEY_ACCESS = "access_token"
-        const val KEY_DEVICE_ID = "device_id"
+        const val KEY_SCREEN_ID = "screen_id"
         const val KEY_EXPIRES_IN = "expires_in"
     }
 }

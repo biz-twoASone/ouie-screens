@@ -18,10 +18,10 @@ class AppStateHolderTest {
     @Test
     fun `transition to Running emits new state`() = runTest {
         val holder = AppStateHolder()
-        holder.toRunning(deviceId = "dev-1")
+        holder.toRunning(screenId = "dev-1")
         holder.state.test {
             val first = awaitItem()
-            assertEquals(AppState.Running(deviceId = "dev-1"), first)
+            assertEquals(AppState.Running(screenId = "dev-1"), first)
             cancelAndIgnoreRemainingEvents()
         }
     }
