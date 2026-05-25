@@ -33,7 +33,7 @@ data class PairingRequestResponse(val code: String, val expires_at: String)
 @Serializable
 data class PairingStatusResponse(
     val status: String,
-    val device_id: String? = null,
+    val screen_id: String? = null,
     val access_token: String? = null,
     val refresh_token: String? = null,
     val expires_in: Int? = null,

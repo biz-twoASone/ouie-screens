@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,7 +27,7 @@ import androidx.tv.material3.Text
 import app.ouie.screens.R
 
 @Composable
-fun InitialSyncOverlay(message: String = "Syncing menu…") {
+fun InitialSyncOverlay(message: String = "Syncing menu…", showSpinner: Boolean = true) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -42,7 +43,11 @@ fun InitialSyncOverlay(message: String = "Syncing menu…") {
                 contentDescription = null,
                 modifier = Modifier.size(192.dp),
             )
-            CircularProgressIndicator(color = Color.White)
+            if (showSpinner) {
+                CircularProgressIndicator(color = Color.White)
+            } else {
+                Spacer(modifier = Modifier.height(48.dp))
+            }
             Text(text = message, color = Color.White)
         }
     }

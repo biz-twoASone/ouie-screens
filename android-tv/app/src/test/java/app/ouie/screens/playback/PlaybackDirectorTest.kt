@@ -58,10 +58,10 @@ class PlaybackDirectorTest {
     }
 
     @Test
-    fun `null config emits NoContent`() = runTest {
+    fun `null config emits Syncing`() = runTest {
         val d = director(cfg = null)
         d.tick()
-        assertEquals(PlaybackState.NoContent, d.state.first())
+        assertEquals(PlaybackState.Syncing, d.state.first())
     }
 
     @Test

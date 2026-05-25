@@ -6,6 +6,6 @@ import kotlinx.serialization.Serializable
 data class DeviceTokens(
     val accessToken: String,
     val refreshToken: String,
-    val deviceId: String,
+    val screenId: String,
     val expiresInSeconds: Int,
 )

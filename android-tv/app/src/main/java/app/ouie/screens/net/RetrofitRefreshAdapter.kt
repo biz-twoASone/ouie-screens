@@ -13,7 +13,7 @@ class RetrofitRefreshAdapter(
         return DeviceTokens(
             accessToken = body.access_token,
             refreshToken = body.refresh_token,
-            deviceId = current.deviceId,                  // server doesn't echo this
+            screenId = current.screenId,
             expiresInSeconds = body.expires_in,
         )
     }

@@ -72,7 +72,7 @@ class PairingViewModel(
             when (val result = repo.observeClaim(code.code)) {
                 is PairingRepository.ClaimResult.Paired -> {
                     tokenStore.save(result.tokens)
-                    appState.toRunning(result.tokens.deviceId)
+                    appState.toRunning(result.tokens.screenId)
                     return
                 }
                 PairingRepository.ClaimResult.Expired,

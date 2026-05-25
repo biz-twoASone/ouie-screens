@@ -58,7 +58,7 @@ class PlaybackDirector(
     private val clock: Clock = Clock.systemUTC(),
 ) : CurrentPlaylistSource, PlaybackStateSource {
 
-    private val _state = MutableStateFlow<PlaybackState>(PlaybackState.NoContent)
+    private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Syncing)
     val state: StateFlow<PlaybackState> = _state.asStateFlow()
 
     /** 0-based index inside the currently-playing playlist. */
@@ -76,7 +76,7 @@ class PlaybackDirector(
             stateTag = when (s) {
                 is PlaybackState.Playing -> "playing"
                 PlaybackState.Preparing -> "preparing"
-                PlaybackState.NoContent -> "no_content"
+                PlaybackState.Syncing, PlaybackState.NoPlaylist, PlaybackState.EmptyPlaylist -> "no_content"
             },
         )
     }
@@ -102,7 +102,7 @@ class PlaybackDirector(
     fun tick() {
         val cfg = config.value
         if (cfg == null) {
-            _state.value = PlaybackState.NoContent
+            _state.value = PlaybackState.Syncing
             return
         }
         val nowLocal = java.time.ZonedDateTime.ofInstant(
@@ -115,12 +115,12 @@ class PlaybackDirector(
             nowLocal = nowLocal,
         )
         if (desiredPlaylistId == null) {
-            _state.value = PlaybackState.NoContent
+            _state.value = PlaybackState.NoPlaylist
             return
         }
         val playlist = cfg.playlists.firstOrNull { it.id == desiredPlaylistId }
         if (playlist == null || playlist.items.isEmpty()) {
-            _state.value = PlaybackState.NoContent
+            _state.value = PlaybackState.EmptyPlaylist
             return
         }
         val cached = cachedMediaIds.value

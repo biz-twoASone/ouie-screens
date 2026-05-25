@@ -19,7 +19,7 @@ class SignageApp : Application() {
             androidContext(this@SignageApp)
             modules(appModule)
         }
-        val deviceId = tokenStore.loadSync()?.deviceId ?: "unpaired"
-        FirebaseCrashlytics.getInstance().setUserId(deviceId)
+        val screenId = tokenStore.loadSync()?.screenId ?: "unpaired"
+        FirebaseCrashlytics.getInstance().setUserId(screenId)
     }
 }
