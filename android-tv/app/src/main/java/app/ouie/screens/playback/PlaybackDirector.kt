@@ -6,6 +6,7 @@ import app.ouie.screens.config.MediaDto
 import app.ouie.screens.config.PlaylistDto
 import app.ouie.screens.heartbeat.CurrentPlaylistSource
 import app.ouie.screens.schedule.ScheduleResolver
+import app.ouie.screens.sync.SyncProgress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -55,6 +56,7 @@ class PlaybackDirector(
     private val config: StateFlow<ConfigDto?>,
     private val cachedMediaIds: StateFlow<Set<String>>,
     private val fileFor: (mediaId: String) -> File?,
+    private val syncProgress: StateFlow<SyncProgress> = MutableStateFlow(SyncProgress()),
     private val clock: Clock = Clock.systemUTC(),
 ) : CurrentPlaylistSource, PlaybackStateSource {
 
@@ -75,7 +77,7 @@ class PlaybackDirector(
             currentMediaId = (s as? PlaybackState.Playing)?.item?.mediaId,
             stateTag = when (s) {
                 is PlaybackState.Playing -> "playing"
-                PlaybackState.Preparing -> "preparing"
+                is PlaybackState.Preparing -> "preparing"
                 PlaybackState.Syncing, PlaybackState.NoPlaylist, PlaybackState.EmptyPlaylist -> "no_content"
             },
         )
@@ -140,7 +142,15 @@ class PlaybackDirector(
                 // Still playing this playlist and current item is cached; continue.
                 return
             }
-            _state.value = PlaybackState.Preparing
+            val p = syncProgress.value
+            _state.value = PlaybackState.Preparing(
+                totalItems = p.totalItems,
+                cachedItems = p.completedItems,
+                totalBytes = p.totalBytes,
+                cachedBytes = p.completedBytes,
+                lastError = p.lastError,
+                failedItems = p.failedItems,
+            )
             return
         }
 
@@ -149,7 +159,15 @@ class PlaybackDirector(
         currentIndex = currentIndex.coerceIn(0, playlist.items.size - 1)
         val item = buildItem(playlist, cfg.media, currentIndex) ?: run {
             // File went missing between cache flow and now — treat as not cached.
-            _state.value = PlaybackState.Preparing
+            val p = syncProgress.value
+            _state.value = PlaybackState.Preparing(
+                totalItems = p.totalItems,
+                cachedItems = p.completedItems,
+                totalBytes = p.totalBytes,
+                cachedBytes = p.completedBytes,
+                lastError = p.lastError,
+                failedItems = p.failedItems,
+            )
             return
         }
         val prev = _state.value as? PlaybackState.Playing

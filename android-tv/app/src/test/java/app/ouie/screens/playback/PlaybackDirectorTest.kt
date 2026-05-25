@@ -68,7 +68,10 @@ class PlaybackDirectorTest {
     fun `config with fallback + nothing cached emits Preparing`() = runTest {
         val d = director(cfg = cfg("m1", "m2"), cached = emptySet())
         d.tick()
-        assertEquals(PlaybackState.Preparing, d.state.first())
+        val state = d.state.first()
+        assert(state is PlaybackState.Preparing) {
+            "expected Preparing but got $state"
+        }
     }
 
     @Test

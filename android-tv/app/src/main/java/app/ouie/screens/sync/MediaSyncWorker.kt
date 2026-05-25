@@ -12,9 +12,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+data class SyncProgress(
+    val totalItems: Int = 0,
+    val completedItems: Int = 0,
+    val totalBytes: Long = 0,
+    val completedBytes: Long = 0,
+    val lastError: String? = null,
+    val failedItems: Int = 0,
+)
 
 /**
  * Serial download queue. Reads the current config + the cached set, downloads
@@ -39,6 +51,9 @@ class MediaSyncWorker(
     private val reporter: CacheStatusReporter,
     private val index: MediaCacheIndex,
 ) {
+
+    private val _progress = MutableStateFlow(SyncProgress())
+    val progress: StateFlow<SyncProgress> = _progress.asStateFlow()
 
     private var job: Job? = null
 
@@ -65,11 +80,52 @@ class MediaSyncWorker(
         val cachedNow = cache.cached.value
         val missing = cfg.media.filter { it.id in referenced && it.id !in cachedNow }
 
+        val totalBytes = missing.sumOf { it.size_bytes }
+        _progress.value = SyncProgress(
+            totalItems = missing.size,
+            completedItems = 0,
+            totalBytes = totalBytes,
+            completedBytes = 0,
+        )
+
+        var completed = 0
+        var completedBytes = 0L
+        var failed = 0
+        var lastError: String? = null
+
         for (media in missing) {
             if (!currentCoroutineContext().isActive) return
             val ext = app.ouie.screens.cache.CacheLayout.extensionFromR2Path(media.url)
             val result = downloader.download(media, expectedExt = ext)
             handleResult(media, ext, result)
+
+            completed++
+            when (result) {
+                MediaDownloader.Result.Success -> {
+                    completedBytes += media.size_bytes
+                }
+                MediaDownloader.Result.InsufficientSpace -> {
+                    failed++
+                    lastError = "Cache full; eviction could not make room"
+                }
+                is MediaDownloader.Result.ChecksumMismatch -> {
+                    failed++
+                    lastError = "Checksum mismatch"
+                }
+                is MediaDownloader.Result.NetworkError -> {
+                    failed++
+                    lastError = "Network error: ${result.cause?.message ?: "code ${result.code ?: "?"}"}"
+                }
+            }
+
+            _progress.value = SyncProgress(
+                totalItems = missing.size,
+                completedItems = completed,
+                totalBytes = totalBytes,
+                completedBytes = completedBytes,
+                lastError = lastError,
+                failedItems = failed,
+            )
         }
     }
 

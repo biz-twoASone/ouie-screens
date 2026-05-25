@@ -90,13 +90,6 @@ class RunningCoordinator(
         val configRepo = ConfigRepository(configApi, configStore)
         configRepoRef = configRepo
 
-        val director = PlaybackDirector(
-            config = configRepo.current,
-            cachedMediaIds = cache.cached,
-            fileFor = { id -> cache.fileFor(id) },
-        )
-        _playbackDirector.value = director
-
         val knownIds: List<String> = configRepo.current.value?.media?.map { it.id } ?: emptyList()
         cache.rehydrate(knownIds)
 
@@ -125,6 +118,14 @@ class RunningCoordinator(
         )
         sync = syncer
         syncer.start()
+
+        val director = PlaybackDirector(
+            config = configRepo.current,
+            cachedMediaIds = cache.cached,
+            fileFor = { id -> cache.fileFor(id) },
+            syncProgress = syncer.progress,
+        )
+        _playbackDirector.value = director
 
         // Plan 5 Task 10: OTA — react to app_release on every config refresh.
         // updatesDir lives next to the media cache so OS-level "clear cache"

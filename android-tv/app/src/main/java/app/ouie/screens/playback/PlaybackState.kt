@@ -17,7 +17,14 @@ sealed interface PlaybackState {
      * facing error. Spec §6.3: never interrupt an already-playing cached playlist
      * for this.
      */
-    data object Preparing : PlaybackState
+    data class Preparing(
+        val totalItems: Int = 0,
+        val cachedItems: Int = 0,
+        val totalBytes: Long = 0,
+        val cachedBytes: Long = 0,
+        val lastError: String? = null,
+        val failedItems: Int = 0,
+    ) : PlaybackState
 
     /** Playing an item from a cached playlist. */
     data class Playing(
