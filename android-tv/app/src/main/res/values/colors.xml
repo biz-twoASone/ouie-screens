@@ -1,7 +1,6 @@
 <resources>
-    <!-- Plan 5 Phase 2 Task 12. Brand color tokens. -->
-    <!-- Brand green — verified by pixel-cluster analysis of source logos. -->
-    <color name="brand_green">#008058</color>
-    <!-- Black background for video surfaces. -->
+    <color name="brand_paper">#F5F0E8</color>
+    <color name="brand_copper">#7A4520</color>
+    <color name="brand_copper_deep">#5C3218</color>
     <color name="background_black">#000000</color>
 </resources>

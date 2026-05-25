@@ -3,5 +3,5 @@
      the foreground (white wordmark on transparent) sits on top. The launcher
      mask shapes both layers identically. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/brand_green" />
+    <solid android:color="@color/brand_paper" />
 </shape>

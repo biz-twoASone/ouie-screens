@@ -16,8 +16,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.ouie.screens.R
 import app.ouie.screens.state.AppState
 import kotlinx.coroutines.delay
 
@@ -43,11 +45,15 @@ fun ErrorScreen(kind: AppState.ErrorKind, onRetry: () -> Unit) {
         onRetry()
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black).padding(48.dp), contentAlignment = Alignment.Center) {
+    val paper = colorResource(id = R.color.brand_paper)
+    val copper = colorResource(id = R.color.brand_copper)
+    val copperDeep = colorResource(id = R.color.brand_copper_deep)
+
+    Box(Modifier.fillMaxSize().background(paper).padding(48.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(title, color = Color.White, fontSize = 28.sp)
-            Text(detail, color = Color.Gray, fontSize = 18.sp)
-            Text("Retrying in $remaining s", color = Color.Gray, fontSize = 14.sp)
+            Text(title, color = copperDeep, fontSize = 28.sp)
+            Text(detail, color = copper, fontSize = 18.sp)
+            Text("Retrying in $remaining s", color = copper, fontSize = 14.sp)
         }
     }
 }
