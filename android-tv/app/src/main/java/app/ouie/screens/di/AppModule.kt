@@ -19,7 +19,9 @@ import app.ouie.screens.net.DateHeaderInterceptor
 import app.ouie.screens.net.DeviceApi
 import app.ouie.screens.net.HeartbeatApi
 import app.ouie.screens.net.PairingApi
+import app.ouie.screens.net.RecoveryAdapter
 import app.ouie.screens.net.RefreshAdapter
+import app.ouie.screens.net.RetrofitRecoveryAdapter
 import app.ouie.screens.net.RetrofitRefreshAdapter
 import app.ouie.screens.net.TokenAuthenticator
 import app.ouie.screens.pairing.PairingRepository
@@ -56,15 +58,18 @@ val appModule = module {
     single { ApiClient.retrofit(get(qualifier = named("pairing"))).create(PairingApi::class.java) }
 
     // Refresh client — no authenticator, to break the chicken-and-egg inside refresh.
+    // Same DeviceApi exposes both refresh and recover (identity-token
+    // recovery, PR-#826 mirror). Both adapters share the no-auth client.
     single(qualifier = named("device_refresh")) { ApiClient.baseHttpClient().build() }
     single { ApiClient.retrofit(get(qualifier = named("device_refresh"))).create(DeviceApi::class.java) }
     single<RefreshAdapter> { RetrofitRefreshAdapter(get()) }
+    single<RecoveryAdapter> { RetrofitRecoveryAdapter(get()) }
 
     single(qualifier = named("authed")) {
         ApiClient.baseHttpClient()
             .addInterceptor(AuthInterceptor(get()))
             .addInterceptor(DateHeaderInterceptor(get()))
-            .authenticator(TokenAuthenticator(get(), get()))
+            .authenticator(TokenAuthenticator(get(), get(), get()))
             .build()
     }
     single { ApiClient.retrofit(get<OkHttpClient>(qualifier = named("authed"))).create(ConfigApi::class.java) }
@@ -99,5 +104,12 @@ val appModule = module {
             proposedName = android.os.Build.MODEL ?: "Android TV",
         )
     }
-    viewModel { PairingViewModel(repo = get(), tokenStore = get(), appState = get()) }
+    viewModel {
+        PairingViewModel(
+            repo = get(),
+            tokenStore = get(),
+            recoveryAdapter = get(),
+            appState = get(),
+        )
+    }
 }

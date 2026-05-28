@@ -47,6 +47,7 @@ class PairingRepositoryTest {
                         access_token = "at",
                         refresh_token = "rt",
                         expires_in = 3600,
+                        screen_identity_token = "identity-jwt-for-dev-1",
                     ))
                 }
             }
@@ -55,9 +56,36 @@ class PairingRepositoryTest {
         val result = repo.observeClaim("ABC234")
         assertTrue(result is PairingRepository.ClaimResult.Paired)
         val paired = result as PairingRepository.ClaimResult.Paired
-        assertEquals("dev-1", paired.tokens.screenId)
-        assertEquals("at", paired.tokens.accessToken)
-        assertNotNull(paired.tokens.refreshToken)
+        assertEquals("dev-1", paired.pickup.tokens.screenId)
+        assertEquals("at", paired.pickup.tokens.accessToken)
+        assertNotNull(paired.pickup.tokens.refreshToken)
+        assertEquals("identity-jwt-for-dev-1", paired.pickup.identityToken)
+    }
+
+    @Test
+    fun `observeClaim handles pickup without identity_token (back-compat)`() = runTest {
+        // A TV paired before screens-identity-recovery shipped (2026-05-28)
+        // would have a pickup payload that does NOT include
+        // screen_identity_token. Pickup should still drain successfully —
+        // identityToken just lands as null.
+        val api = object : PairingApi {
+            override suspend fun requestCode(body: PairingRequestBody) = error("unused")
+            override suspend fun status(code: String): Response<PairingStatusResponse> =
+                Response.success(PairingStatusResponse(
+                    status = "paired",
+                    screen_id = "dev-1",
+                    access_token = "at",
+                    refresh_token = "rt",
+                    expires_in = 3600,
+                    screen_identity_token = null,
+                ))
+        }
+        val repo = PairingRepository(api, proposedName = "TV-1", pollIntervalMs = 1)
+        val result = repo.observeClaim("ABC234")
+        assertTrue(result is PairingRepository.ClaimResult.Paired)
+        val paired = result as PairingRepository.ClaimResult.Paired
+        assertEquals("dev-1", paired.pickup.tokens.screenId)
+        assertEquals(null, paired.pickup.identityToken)
     }
 
     @Test

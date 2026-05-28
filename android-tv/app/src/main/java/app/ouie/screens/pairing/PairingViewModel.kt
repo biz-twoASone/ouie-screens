@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.ouie.screens.auth.TokenSource
+import app.ouie.screens.net.RecoveryAdapter
 import app.ouie.screens.state.AppState
 import app.ouie.screens.state.AppStateHolder
 import kotlinx.coroutines.CancellationException
@@ -16,7 +17,14 @@ import java.time.Instant
 
 /**
  * Drives the Pairing screen:
- * 1. On init, request a code.
+ * 0. On init, if a long-lived identity token is present (set on a prior
+ *    pair / re-pair), attempt /screens-recover BEFORE showing a pairing
+ *    code. This is the cold-boot recovery path — the TV was running fine,
+ *    a transient blip nuked the refresh token, app got power-cycled,
+ *    [TokenStore.loadSync] returns null at boot, but the identity token
+ *    survives [TokenStore.clear] and re-establishes the session without
+ *    the operator touching anything.
+ * 1. If recovery fails or no identity token exists, request a code.
  * 2. Start polling `/pairing-status` every 3s.
  * 3. On Paired: persist tokens, transition AppState to Running.
  * 4. On Expired / PickupConsumed: request a new code and restart polling.
@@ -25,6 +33,7 @@ import java.time.Instant
 class PairingViewModel(
     private val repo: PairingRepository,
     private val tokenStore: TokenSource,
+    private val recoveryAdapter: RecoveryAdapter,
     private val appState: AppStateHolder,
 ) : ViewModel() {
 
@@ -34,6 +43,7 @@ class PairingViewModel(
         val secondsUntilExpiry: Int = 0,
         val isRequesting: Boolean = true,
         val message: String? = null,
+        val recovering: Boolean = false,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -45,7 +55,37 @@ class PairingViewModel(
 
     private fun start() {
         viewModelScope.launch {
+            if (tryIdentityRecovery()) return@launch
             loop()
+        }
+    }
+
+    /**
+     * Cold-boot identity recovery. Returns true when recovery succeeded
+     * and the app has transitioned to Running — caller should NOT proceed
+     * to the pairing-code loop. Returns false when there's no identity
+     * token or recovery failed; caller falls through to normal pairing.
+     */
+    private suspend fun tryIdentityRecovery(): Boolean {
+        val identityToken = tokenStore.loadIdentitySync() ?: return false
+        _ui.value = UiState(isRequesting = true, recovering = true, message = "Reconnecting…")
+        return try {
+            val recovered = recoveryAdapter.recover(identityToken, screenId = null)
+            tokenStore.save(recovered)
+            appState.toRunning(recovered.screenId)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Log.w(TAG, "identity recovery failed, falling back to pairing code", t)
+            // Server signalled "no recoverable identity" (deleted screen,
+            // revoked, identity-token secret rotation). Wipe the dead
+            // identity token so we don't loop on the next start().
+            if (t is app.ouie.screens.net.RecoveryFailedException && t.httpCode == 401) {
+                tokenStore.clearAll()
+            }
+            _ui.value = UiState(isRequesting = true, recovering = false, message = null)
+            false
         }
     }
 
@@ -71,8 +111,9 @@ class PairingViewModel(
 
             when (val result = repo.observeClaim(code.code)) {
                 is PairingRepository.ClaimResult.Paired -> {
-                    tokenStore.save(result.tokens)
-                    appState.toRunning(result.tokens.screenId)
+                    tokenStore.save(result.pickup.tokens)
+                    result.pickup.identityToken?.let { tokenStore.saveIdentity(it) }
+                    appState.toRunning(result.pickup.tokens.screenId)
                     return
                 }
                 PairingRepository.ClaimResult.Expired,
