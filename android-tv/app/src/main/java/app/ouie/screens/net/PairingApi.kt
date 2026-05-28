@@ -37,4 +37,12 @@ data class PairingStatusResponse(
     val access_token: String? = null,
     val refresh_token: String? = null,
     val expires_in: Int? = null,
+    /**
+     * Long-lived JWT proving "I was paired as screen X". Persisted via
+     * [TokenSource.saveIdentity]; survives [TokenSource.clear] so
+     * [TokenAuthenticator]'s recovery step can re-establish access without
+     * a fresh pairing code. Null for any TV paired before this field
+     * shipped (2026-05-28); they get one on their next pair / re-pair.
+     */
+    val screen_identity_token: String? = null,
 )

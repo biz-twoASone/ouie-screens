@@ -8,6 +8,8 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicReference
@@ -45,9 +47,11 @@ class TokenAuthenticatorTest {
             screenId = "dev-1",
             expiresInSeconds = 3600,
         ) }
+        val recoveryAdapter = FakeRecoveryAdapter.alwaysFails()
         val authenticator = TokenAuthenticator(
             tokenStore = tokenStore,
             refreshAdapter = refreshAdapter,
+            recoveryAdapter = recoveryAdapter,
         )
 
         val client = OkHttpClient.Builder()
@@ -81,7 +85,8 @@ class TokenAuthenticatorTest {
             Thread.sleep(100)
             DeviceTokens("new", "rt2", "dev-1", 3600)
         }
-        val authenticator = TokenAuthenticator(tokenStore, refreshAdapter)
+        val recoveryAdapter = FakeRecoveryAdapter.alwaysFails()
+        val authenticator = TokenAuthenticator(tokenStore, refreshAdapter, recoveryAdapter)
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(tokenStore))
             .authenticator(authenticator)
@@ -95,14 +100,51 @@ class TokenAuthenticatorTest {
     }
 
     @Test
-    fun `refresh 401 clears the token store`() = runBlocking {
+    fun `refresh failure with identity token triggers recovery and retries`() = runBlocking {
+        // Old behavior under test: refresh fails → clearAll → 401 surfaces.
+        // New behavior: refresh fails → identity recovery succeeds →
+        // retry original request with the recovery-issued access token.
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("ok-after-recovery"))
+
+        val tokenStore = FakeTokenStore(
+            initial = DeviceTokens("old", "rt1", "dev-1", 3600),
+        ).also { it.saveIdentity("identity-jwt-for-dev-1") }
+        val refreshAdapter = FakeRefreshAdapter { throw RuntimeException("refresh failed") }
+        val recoveryAdapter = FakeRecoveryAdapter.alwaysReturns {
+            DeviceTokens("recovered", "rt-fresh", "dev-1", 3600)
+        }
+        val authenticator = TokenAuthenticator(tokenStore, refreshAdapter, recoveryAdapter)
+        val client = OkHttpClient.Builder()
+            .addInterceptor(AuthInterceptor(tokenStore))
+            .authenticator(authenticator)
+            .build()
+
+        val response = client.newCall(
+            Request.Builder().url(server.url("/x")).build()
+        ).execute()
+
+        assertEquals(200, response.code)
+        // The retry request must carry the recovery-issued access token.
+        server.takeRequest()
+        val retry = server.takeRequest()
+        assertEquals("Bearer recovered", retry.getHeader("Authorization"))
+        // Token store reflects the recovery — both DeviceTokens AND identity
+        // token persist (clearAll was never called).
+        assertEquals("recovered", tokenStore.loadSync()?.accessToken)
+        assertNotNull(tokenStore.loadIdentitySync())
+    }
+
+    @Test
+    fun `refresh and recovery both fail clears tokens but preserves identity`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(401))
 
         val tokenStore = FakeTokenStore(
             initial = DeviceTokens("old", "rt1", "dev-1", 3600),
-        )
+        ).also { it.saveIdentity("identity-jwt-for-dev-1") }
         val refreshAdapter = FakeRefreshAdapter { throw RuntimeException("refresh failed") }
-        val authenticator = TokenAuthenticator(tokenStore, refreshAdapter)
+        val recoveryAdapter = FakeRecoveryAdapter.alwaysFails()
+        val authenticator = TokenAuthenticator(tokenStore, refreshAdapter, recoveryAdapter)
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(tokenStore))
             .authenticator(authenticator)
@@ -113,20 +155,68 @@ class TokenAuthenticatorTest {
         ).execute()
 
         assertEquals(401, response.code)
-        assertEquals(null, tokenStore.loadSync())
+        // DeviceTokens cleared so the next request goes out without
+        // Authorization (otherwise the OS would loop on stale credentials).
+        assertNull(tokenStore.loadSync())
+        // Identity token PRESERVED — a future network heal can still
+        // re-establish the session via PairingViewModel's cold-boot recovery.
+        assertNotNull(tokenStore.loadIdentitySync())
+    }
+
+    @Test
+    fun `refresh failure with no identity token falls straight through to clear`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(401))
+
+        val tokenStore = FakeTokenStore(
+            initial = DeviceTokens("old", "rt1", "dev-1", 3600),
+        ) // no identity token saved
+        val refreshAdapter = FakeRefreshAdapter { throw RuntimeException("refresh failed") }
+        val recoveryAdapter = FakeRecoveryAdapter.alwaysReturns {
+            // Should never be called — gated on identity token presence.
+            throw IllegalStateException("recovery should not run without identity token")
+        }
+        val authenticator = TokenAuthenticator(tokenStore, refreshAdapter, recoveryAdapter)
+        val client = OkHttpClient.Builder()
+            .addInterceptor(AuthInterceptor(tokenStore))
+            .authenticator(authenticator)
+            .build()
+
+        val response = client.newCall(
+            Request.Builder().url(server.url("/x")).build()
+        ).execute()
+
+        assertEquals(401, response.code)
+        assertNull(tokenStore.loadSync())
     }
 }
 
 /** Minimal TokenStore stand-in — production uses EncryptedSharedPreferences. */
 private class FakeTokenStore(initial: DeviceTokens?) : app.ouie.screens.auth.TokenSource {
     @Volatile private var tokens: DeviceTokens? = initial
+    @Volatile private var identity: String? = null
     override fun loadSync(): DeviceTokens? = tokens
     override fun save(tokens: DeviceTokens) { this.tokens = tokens }
     override fun clear() { tokens = null }
+    override fun loadIdentitySync(): String? = identity
+    override fun saveIdentity(identityToken: String) { identity = identityToken }
+    override fun clearAll() { tokens = null; identity = null }
 }
 
 private class FakeRefreshAdapter(
     private val produce: suspend () -> DeviceTokens,
 ) : RefreshAdapter {
     override suspend fun refresh(current: DeviceTokens): DeviceTokens = produce()
+}
+
+private class FakeRecoveryAdapter(
+    private val produce: suspend () -> DeviceTokens,
+) : RecoveryAdapter {
+    override suspend fun recover(identityToken: String, screenId: String?): DeviceTokens = produce()
+
+    companion object {
+        fun alwaysFails() = FakeRecoveryAdapter {
+            throw RecoveryFailedException(401)
+        }
+        fun alwaysReturns(produce: suspend () -> DeviceTokens) = FakeRecoveryAdapter(produce)
+    }
 }
