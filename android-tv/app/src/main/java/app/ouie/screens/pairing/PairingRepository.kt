@@ -21,8 +21,20 @@ class PairingRepository(
 ) {
     data class PairingCode(val code: String, val expiresAtIso: String)
 
+    /**
+     * Pickup bundle drained from screens-pairing-status on the first
+     * paired-read. Bundles the short-lived auth tokens with the
+     * long-lived screen-identity token (null for TVs paired before the
+     * identity-recovery feature shipped on 2026-05-28; the next pair /
+     * re-pair will mint one for them).
+     */
+    data class ClaimPickup(
+        val tokens: DeviceTokens,
+        val identityToken: String?,
+    )
+
     sealed interface ClaimResult {
-        data class Paired(val tokens: DeviceTokens) : ClaimResult
+        data class Paired(val pickup: ClaimPickup) : ClaimResult
         data object Pending : ClaimResult         // never returned — observeClaim loops on Pending
         data object Expired : ClaimResult
         data object PickupConsumed : ClaimResult  // re-pair
@@ -62,7 +74,12 @@ class PairingRepository(
                     val rt = body.refresh_token ?: return ClaimResult.PickupConsumed
                     val sid = body.screen_id ?: return ClaimResult.PickupConsumed
                     val exp = body.expires_in ?: 3600
-                    return ClaimResult.Paired(DeviceTokens(at, rt, sid, exp))
+                    return ClaimResult.Paired(
+                        ClaimPickup(
+                            tokens = DeviceTokens(at, rt, sid, exp),
+                            identityToken = body.screen_identity_token,
+                        ),
+                    )
                 }
                 "paired_pickup_consumed" -> return ClaimResult.PickupConsumed
                 else -> return ClaimResult.Error(RuntimeException("unknown status: ${body.status}"))

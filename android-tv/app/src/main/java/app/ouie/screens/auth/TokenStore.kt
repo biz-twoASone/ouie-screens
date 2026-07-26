@@ -38,6 +38,24 @@ class TokenStore(context: Context) : TokenSource {
     }
 
     override fun clear() {
+        // PRESERVES identity token — that's the whole point. TokenAuthenticator's
+        // failed-refresh path used to call this and strand the TV; with identity
+        // recovery wired, the survivor is what unsticks the TV via screens-recover.
+        prefs.edit()
+            .remove(KEY_ACCESS)
+            .remove(KEY_REFRESH)
+            .remove(KEY_SCREEN_ID)
+            .remove(KEY_EXPIRES_IN)
+            .apply()
+    }
+
+    override fun loadIdentitySync(): String? = prefs.getString(KEY_IDENTITY, null)
+
+    override fun saveIdentity(identityToken: String) {
+        prefs.edit().putString(KEY_IDENTITY, identityToken).apply()
+    }
+
+    override fun clearAll() {
         prefs.edit().clear().apply()
     }
 
@@ -46,5 +64,7 @@ class TokenStore(context: Context) : TokenSource {
         const val KEY_ACCESS = "access_token"
         const val KEY_SCREEN_ID = "screen_id"
         const val KEY_EXPIRES_IN = "expires_in"
+        // Long-lived identity token (mirror of POS PR #826). Survives [clear].
+        const val KEY_IDENTITY = "screen_identity_token"
     }
 }

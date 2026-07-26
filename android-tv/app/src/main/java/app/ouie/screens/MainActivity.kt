@@ -36,7 +36,23 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        tokenStore.loadSync()?.let { appState.toRunning(it.screenId) }
+        tokenStore.loadSync()?.let {
+            appState.toRunning(it.screenId)
+            // Start the foreground service synchronously here (in addition
+            // to the LaunchedEffect in SignageRoot below). Both invocations
+            // are safe — Android dedupes startForegroundService and
+            // SignageService.onStartCommand is idempotent via
+            // RunningCoordinator.start(). The benefit on cold boot: the
+            // coordinator's disk-bound init (cache rehydrate, config
+            // store load) runs in parallel with first-frame Compose
+            // rendering instead of strictly after, which closes the
+            // "black box, no playback yet" gap users reported after
+            // turning a TV on in the morning (2026-05-28 outage report).
+            ContextCompat.startForegroundService(
+                this,
+                Intent(this, SignageService::class.java),
+            )
+        }
         setContent { SignageRoot(appState) }
     }
 }
