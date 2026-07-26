@@ -102,6 +102,18 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            // Without this, the stubbed android.jar makes every android.util.Log
+            // call throw RuntimeException("Stub!"). That is not cosmetic: code
+            // like PairingViewModel's `catch { Log.w(...); appState.toError(...) }`
+            // has the Stub! exception escape the catch block, so a JVM test sees
+            // the error state never being reached while a real device is fine.
+            // It silently made the pairing failure path untestable off-device.
+            isReturnDefaultValues = true
+        }
+    }
+
     packaging {
         resources {
             excludes += setOf(

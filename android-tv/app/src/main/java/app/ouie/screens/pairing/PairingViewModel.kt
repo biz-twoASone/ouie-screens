@@ -9,6 +9,7 @@ import app.ouie.screens.error.FailureClassifier
 import app.ouie.screens.net.RecoveryAdapter
 import app.ouie.screens.state.AppStateHolder
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,12 +50,39 @@ class PairingViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
+    private var job: Job? = null
+
     init {
-        start()
+        ensureStarted()
     }
 
-    private fun start() {
-        viewModelScope.launch {
+    /**
+     * Idempotently (re)arms the pairing flow. Starts nothing if a run is
+     * already in flight.
+     *
+     * MUST be called every time the Pairing screen becomes visible.
+     * [PairingScreen] does this from a `LaunchedEffect`, and that call is
+     * load-bearing, not defensive:
+     *
+     * This ViewModel is retained in the Activity's ViewModelStore, so `init`
+     * runs exactly ONCE per process. [loop] `return`s when requestCode fails,
+     * ending the coroutine. The recovery path is ErrorScreen's countdown →
+     * `AppStateHolder.recoverToPairing()` → Pairing → PairingScreen — which
+     * re-composes but resolves the SAME retained ViewModel, so `init` does not
+     * re-run. Before this method existed, that made the retry a no-op: after a
+     * single requestCode failure the TV never asked the server for a pairing
+     * code again, sat on a stale "Requesting pairing code…" spinner, and could
+     * only be revived by killing the process.
+     *
+     * That is the confirmed mechanism behind the ESSEL Bogor Pajajaran TVs
+     * issuing three pairing codes on 2026-07-18 and then zero for the next
+     * 30 days while the backend was verified healthy the whole time.
+     * Reproduced on an atv34 emulator against an unreachable endpoint:
+     * exactly one "requestCode failed" in logcat, never a second.
+     */
+    fun ensureStarted() {
+        if (job?.isActive == true) return
+        job = viewModelScope.launch {
             if (tryIdentityRecovery()) return@launch
             loop()
         }
