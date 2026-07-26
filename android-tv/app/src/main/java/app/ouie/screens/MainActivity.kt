@@ -76,6 +76,7 @@ private fun SignageRoot(appState: AppStateHolder) {
             is AppState.Running -> RunningScreen(screenId = s.screenId)
             is AppState.Error -> ErrorScreen(
                 kind = s.kind,
+                detail = s.detail,
                 onRetry = { appState.recoverToPairing() },
             )
         }

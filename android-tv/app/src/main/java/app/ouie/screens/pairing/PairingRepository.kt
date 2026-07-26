@@ -62,9 +62,12 @@ class PairingRepository(
                 return ClaimResult.Error(t)
             }
             if (!resp.isSuccessful) {
-                return ClaimResult.Error(RuntimeException("pairing-status HTTP ${resp.code()}"))
+                // Typed rather than a bare RuntimeException so FailureClassifier
+                // can render the status code on the TV — "Unknown ·
+                // RuntimeException" tells an operator nothing.
+                return ClaimResult.Error(PairingStatusFailedException(resp.code()))
             }
-            val body = resp.body() ?: return ClaimResult.Error(RuntimeException("empty body"))
+            val body = resp.body() ?: return ClaimResult.Error(PairingStatusFailedException(EMPTY_BODY))
 
             when (body.status) {
                 "pending" -> delay(pollIntervalMs)
@@ -82,8 +85,28 @@ class PairingRepository(
                     )
                 }
                 "paired_pickup_consumed" -> return ClaimResult.PickupConsumed
-                else -> return ClaimResult.Error(RuntimeException("unknown status: ${body.status}"))
+                else -> return ClaimResult.Error(UnknownPairingStatusException(body.status))
             }
         }
     }
+
+    companion object {
+        /** Sentinel [PairingStatusFailedException.httpCode] for a 2xx with no body. */
+        const val EMPTY_BODY = -1
+    }
 }
+
+/**
+ * pairing-status answered with a non-2xx (or a 2xx with an empty body, as
+ * [PairingRepository.EMPTY_BODY]). Carries the code so the error screen can
+ * name it.
+ */
+class PairingStatusFailedException(val httpCode: Int) :
+    Exception(
+        if (httpCode == PairingRepository.EMPTY_BODY) "pairing-status: empty body"
+        else "pairing-status: HTTP $httpCode",
+    )
+
+/** pairing-status returned a `status` discriminator this build doesn't know. */
+class UnknownPairingStatusException(val status: String) :
+    Exception("pairing-status: unknown status '$status'")

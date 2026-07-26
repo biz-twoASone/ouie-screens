@@ -17,8 +17,17 @@ class AppStateHolder {
         _state.value = AppState.Running(screenId)
     }
 
-    fun toError(kind: AppState.ErrorKind) {
-        _state.value = AppState.Error(kind)
+    fun toError(kind: AppState.ErrorKind, detail: String? = null) {
+        _state.value = AppState.Error(kind, detail)
+    }
+
+    /**
+     * Preferred entry point for failures that came from a caught [Throwable] —
+     * carries the classified cause through to the screen instead of throwing it
+     * away. See [app.ouie.screens.error.FailureDiagnosis] for why.
+     */
+    fun toError(diagnosis: app.ouie.screens.error.FailureDiagnosis) {
+        _state.value = AppState.Error(diagnosis.kind, diagnosis.detail)
     }
 
     /**

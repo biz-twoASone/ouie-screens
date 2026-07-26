@@ -5,8 +5,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.ouie.screens.auth.TokenSource
+import app.ouie.screens.error.FailureClassifier
 import app.ouie.screens.net.RecoveryAdapter
-import app.ouie.screens.state.AppState
 import app.ouie.screens.state.AppStateHolder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -98,7 +98,7 @@ class PairingViewModel(
                 throw e
             } catch (t: Throwable) {
                 Log.w(TAG, "requestCode failed", t)
-                appState.toError(AppState.ErrorKind.ServerUnavailable)
+                appState.toError(FailureClassifier.classify("pairing-request", t))
                 return
             }
             _ui.value = UiState(
@@ -123,7 +123,9 @@ class PairingViewModel(
                 }
                 is PairingRepository.ClaimResult.Error -> {
                     Log.w(TAG, "observeClaim failed", result.cause)
-                    appState.toError(AppState.ErrorKind.NetworkUnavailable)
+                    // Was hardcoded to NetworkUnavailable ("No network"), which
+                    // mislabelled a pairing-status HTTP 500 as a Wi-Fi problem.
+                    appState.toError(FailureClassifier.classify("pairing-status", result.cause))
                     return
                 }
                 PairingRepository.ClaimResult.Pending -> {} // observeClaim never returns Pending

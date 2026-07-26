@@ -7,6 +7,24 @@ plugins {
     alias(libs.plugins.firebase.crashlytics)
 }
 
+/**
+ * Short git SHA of the working tree, suffixed with "-dirty" when there are
+ * uncommitted changes — an APK built from a dirty tree is not reproducible from
+ * its SHA alone and must say so. "nogit" when git is unavailable (source
+ * archive, no .git dir); the build still succeeds rather than failing hard.
+ */
+val gitShortSha: String = try {
+    val sha = providers.exec {
+        commandLine("git", "rev-parse", "--short=7", "HEAD")
+    }.standardOutput.asText.get().trim()
+    val dirty = providers.exec {
+        commandLine("git", "status", "--porcelain")
+    }.standardOutput.asText.get().isNotBlank()
+    if (sha.isEmpty()) "nogit" else if (dirty) "$sha-dirty" else sha
+} catch (_: Exception) {
+    "nogit"
+}
+
 android {
     namespace = "app.ouie.screens"
     compileSdk = 35
@@ -15,8 +33,17 @@ android {
         applicationId = "app.ouie.screens"
         minSdk = 26              // Android TV 8.0 floor; current F&B TVs are newer
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.0.0-ouie"
+        versionCode = 10
+
+        // versionName is what the TV reports as `screens.app_version` on every
+        // heartbeat, so it MUST identify the build. It didn't: every build from
+        // 2026-05-21 onward reported a static "1.0.0-ouie", which is why the
+        // 2026-06/07 ESSEL Bogor outage couldn't be diagnosed from the
+        // dashboard — there was no way to tell whether a stranded TV had the
+        // identity-recovery fix (PR #11) or a pre-fix build. The short git SHA
+        // makes each build distinguishable without an on-site `adb shell
+        // dumpsys package`. Falls back to "nogit" for source-archive builds.
+        versionName = "1.1.0-ouie+$gitShortSha"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
