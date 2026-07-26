@@ -31,6 +31,14 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun PairingScreen(viewModel: PairingViewModel = koinViewModel()) {
     val ui by viewModel.ui.collectAsState()
+
+    // Load-bearing, NOT defensive. The ViewModel is retained in the Activity's
+    // ViewModelStore, so its `init` runs once per process — re-entering this
+    // screen after ErrorScreen's auto-retry would otherwise resolve the same
+    // instance and re-arm nothing, leaving the TV parked on a stale spinner
+    // that never contacts the server again. See PairingViewModel.ensureStarted.
+    LaunchedEffect(Unit) { viewModel.ensureStarted() }
+
     val paper = colorResource(id = R.color.brand_paper)
     val copper = colorResource(id = R.color.brand_copper)
     val copperDeep = colorResource(id = R.color.brand_copper_deep)
