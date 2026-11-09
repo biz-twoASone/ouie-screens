@@ -45,4 +45,6 @@ data class PairingStatusResponse(
      * shipped (2026-05-28); they get one on their next pair / re-pair.
      */
     val screen_identity_token: String? = null,
+    /** Server-advertised API base (ouie S5c), only on a successful "paired" pickup. See ApiBaseAdopter. */
+    val api_base_url: String? = null,
 )

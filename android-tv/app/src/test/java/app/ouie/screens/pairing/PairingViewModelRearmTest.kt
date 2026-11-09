@@ -7,6 +7,7 @@ import app.ouie.screens.net.PairingRequestBody
 import app.ouie.screens.net.PairingRequestResponse
 import app.ouie.screens.net.PairingStatusResponse
 import app.ouie.screens.net.RecoveryAdapter
+import app.ouie.screens.net.inertApiBaseAdopter
 import app.ouie.screens.state.AppState
 import app.ouie.screens.state.AppStateHolder
 import kotlinx.coroutines.Dispatchers
@@ -78,6 +79,7 @@ class PairingViewModelRearmTest {
             tokenStore = NoTokens(),
             recoveryAdapter = NeverRecovers(),
             appState = appState,
+            apiBase = inertApiBaseAdopter(),
         )
 
     // Deliberately NOT `runTest`: viewModelScope dispatches on Dispatchers.Main
@@ -139,6 +141,7 @@ class PairingViewModelRearmTest {
             tokenStore = NoTokens(),
             recoveryAdapter = NeverRecovers(),
             appState = AppStateHolder(),
+            apiBase = inertApiBaseAdopter(),
         )
         assertEquals(1, hangingApi.attempts.get())
 

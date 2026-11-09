@@ -31,6 +31,8 @@ class PairingRepository(
     data class ClaimPickup(
         val tokens: DeviceTokens,
         val identityToken: String?,
+        /** Server-advertised API base, adopted only after the pickup is persisted. */
+        val apiBaseUrl: String?,
     )
 
     sealed interface ClaimResult {
@@ -81,6 +83,7 @@ class PairingRepository(
                         ClaimPickup(
                             tokens = DeviceTokens(at, rt, sid, exp),
                             identityToken = body.screen_identity_token,
+                            apiBaseUrl = body.api_base_url,
                         ),
                     )
                 }

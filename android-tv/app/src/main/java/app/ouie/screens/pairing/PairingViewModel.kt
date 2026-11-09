@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.ouie.screens.auth.TokenSource
 import app.ouie.screens.error.FailureClassifier
+import app.ouie.screens.net.ApiBaseAdopter
 import app.ouie.screens.net.RecoveryAdapter
 import app.ouie.screens.state.AppStateHolder
 import kotlinx.coroutines.CancellationException
@@ -27,7 +28,9 @@ import java.time.Instant
  *    the operator touching anything.
  * 1. If recovery fails or no identity token exists, request a code.
  * 2. Start polling `/pairing-status` every 3s.
- * 3. On Paired: persist tokens, transition AppState to Running.
+ * 3. On Paired: persist tokens, then offer the pickup's api_base_url to
+ *    [apiBase] (which only switches after the target serves this screen),
+ *    then transition AppState to Running.
  * 4. On Expired / PickupConsumed: request a new code and restart polling.
  * 5. On Error: surface via AppState.Error; auto-retry from ErrorScreen.
  */
@@ -36,6 +39,7 @@ class PairingViewModel(
     private val tokenStore: TokenSource,
     private val recoveryAdapter: RecoveryAdapter,
     private val appState: AppStateHolder,
+    private val apiBase: ApiBaseAdopter,
 ) : ViewModel() {
 
     data class UiState(
@@ -141,6 +145,10 @@ class PairingViewModel(
                 is PairingRepository.ClaimResult.Paired -> {
                     tokenStore.save(result.pickup.tokens)
                     result.pickup.identityToken?.let { tokenStore.saveIdentity(it) }
+                    // After the tokens are durable: adoption probes the target
+                    // with them, and a failed probe leaves the pairing intact
+                    // on the base that just paired us.
+                    apiBase.reconcile(result.pickup.apiBaseUrl)
                     appState.toRunning(result.pickup.tokens.screenId)
                     return
                 }

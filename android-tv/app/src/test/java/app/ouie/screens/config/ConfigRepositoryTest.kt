@@ -3,6 +3,7 @@ package app.ouie.screens.config
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import app.ouie.screens.net.ConfigApi
+import app.ouie.screens.net.inertApiBaseAdopter
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -49,7 +50,7 @@ class ConfigRepositoryTest {
                 ),
         )
         val store = ConfigStore(tmp.newFolder(), json)
-        val repo = ConfigRepository(api, store)
+        val repo = ConfigRepository(api, store, inertApiBaseAdopter())
 
         val result = repo.fetch()
 
@@ -70,7 +71,7 @@ class ConfigRepositoryTest {
         )
         server.enqueue(MockResponse().setResponseCode(304))
 
-        val repo = ConfigRepository(api, store)
+        val repo = ConfigRepository(api, store, inertApiBaseAdopter())
         val result = repo.fetch()
 
         assertEquals(ConfigRepository.Result.NotModified, result)
@@ -83,7 +84,7 @@ class ConfigRepositoryTest {
     fun `5xx surfaces as Error without corrupting store`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(503))
         val store = ConfigStore(tmp.newFolder(), json)
-        val repo = ConfigRepository(api, store)
+        val repo = ConfigRepository(api, store, inertApiBaseAdopter())
 
         val result = repo.fetch()
 

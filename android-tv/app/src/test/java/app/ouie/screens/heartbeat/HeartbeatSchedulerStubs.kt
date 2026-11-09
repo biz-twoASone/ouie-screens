@@ -10,6 +10,7 @@ import app.ouie.screens.config.ConfigDto
 import app.ouie.screens.config.ConfigRepository
 import app.ouie.screens.config.ConfigStore
 import app.ouie.screens.net.ConfigApi
+import app.ouie.screens.net.inertApiBaseAdopter
 import app.ouie.screens.net.HeartbeatApi
 import app.ouie.screens.playback.PlaybackStateSnapshot
 import app.ouie.screens.playback.PlaybackStateSource
@@ -48,5 +49,5 @@ internal object StubConfigApi : ConfigApi {
 internal fun newStubConfigRepository(): ConfigRepository {
     val dir = File(System.getProperty("java.io.tmpdir"), "stub-config-${System.nanoTime()}")
     Runtime.getRuntime().addShutdownHook(Thread { dir.deleteRecursively() })
-    return ConfigRepository(api = StubConfigApi, store = ConfigStore(dir, Json))
+    return ConfigRepository(api = StubConfigApi, store = ConfigStore(dir, Json), apiBase = inertApiBaseAdopter())
 }

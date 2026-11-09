@@ -1,6 +1,7 @@
 // android-tv/app/src/main/java/app/ouie/screens/config/ConfigRepository.kt
 package app.ouie.screens.config
 
+import app.ouie.screens.net.ApiBaseAdopter
 import app.ouie.screens.net.ConfigApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,10 +17,15 @@ import kotlinx.coroutines.flow.asStateFlow
  * Error policy (spec §7): any non-success response (401 → TokenAuthenticator
  * handles; other 4xx/5xx → `Result.Error`) leaves the stored config untouched.
  * Callers keep playing whatever was last good.
+ *
+ * Every validated response (a 200 that parsed, or a 304 confirming the
+ * last-good config) hands that config's `api_base_url` to [apiBase], so a hint
+ * that could not be adopted yet is retried on the next poll.
  */
 class ConfigRepository(
     private val api: ConfigApi,
     private val store: ConfigStore,
+    private val apiBase: ApiBaseAdopter,
 ) {
 
     sealed interface Result {
@@ -45,9 +51,13 @@ class ConfigRepository(
                 val body = resp.body() ?: return Result.Error(null)
                 store.save(body, resp.headers()["ETag"])
                 _current.value = body
+                apiBase.reconcile(body.api_base_url)
                 Result.Applied(body.version)
             }
-            304 -> Result.NotModified
+            304 -> {
+                _current.value?.let { apiBase.reconcile(it.api_base_url) }
+                Result.NotModified
+            }
             else -> Result.Error(RuntimeException("devices-config HTTP ${resp.code()}"))
         }
     }
