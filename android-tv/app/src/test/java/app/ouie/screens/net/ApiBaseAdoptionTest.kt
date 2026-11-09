@@ -24,6 +24,7 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import okhttp3.mockwebserver.SocketPolicy
 import okhttp3.tls.HandshakeCertificates
 import okhttp3.tls.HeldCertificate
 import org.junit.After
@@ -67,6 +68,7 @@ class ApiBaseAdoptionTest {
         @Volatile var hint: String? = null
         @Volatile var accepted: Set<String> = setOf("access-1")
         @Volatile var pickupHint: String? = null
+        @Volatile var refreshDown = false
         val calls = CopyOnWriteArrayList<RecordedRequest>()
 
         init {
@@ -78,7 +80,7 @@ class ApiBaseAdoptionTest {
                     return when (endpoint(request)) {
                         "screens-config" -> if (bearer in accepted) config(request) else MockResponse().setResponseCode(401)
                         "screens-cache-status" -> MockResponse().setResponseCode(if (bearer in accepted) 204 else 401)
-                        "screens-refresh" -> MockResponse().setBody(
+                        "screens-refresh" -> if (refreshDown) MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST) else MockResponse().setBody(
                             """{"access_token":"access-2","refresh_token":"refresh-2","expires_in":3600}""",
                         )
                         "screens-pairing-request" -> MockResponse().setBody(
@@ -197,6 +199,61 @@ class ApiBaseAdoptionTest {
         assertEquals(0, compiled.hits("screens-refresh"))
         assertEquals("access-2", tokens.loadSync()?.accessToken)
         assertFalse(tokens.writes.contains("clear"))
+    }
+
+    @Test
+    fun `an adopted base that goes down returns the screen to the compiled base without losing pairing`() = runBlocking {
+        compiled.hint = next.base().toString()
+        config.fetch()
+        assertEquals(next.base(), store.current())
+
+        next.server.shutdown()
+        compiled.accepted = setOf("access-2") // the access token has expired meanwhile
+        assertTrue(cacheStatus.post(CacheStatusBatch(emptyList())).isSuccessful)
+
+        assertEquals(compiled.base(), store.current())
+        assertFalse(storeFile().exists())
+        assertEquals(1, compiled.hits("screens-refresh"))
+        assertEquals("access-2", tokens.loadSync()?.accessToken)
+        assertEquals("identity-1", tokens.loadIdentitySync())
+        assertFalse(tokens.writes.contains("clear"))
+        assertFalse(tokens.writes.contains("clearAll"))
+        assertEquals("later calls stay on the compiled base", ConfigRepository.Result.NotModified, config.fetch())
+        assertEquals(compiled.base(), store.current())
+    }
+
+    @Test
+    fun `a refresh that cannot reach the adopted base is served by the compiled base and keeps the tokens`() = runBlocking {
+        compiled.hint = next.base().toString()
+        config.fetch()
+        assertEquals(next.base(), store.current())
+
+        next.accepted = setOf("access-2")
+        next.refreshDown = true
+        assertTrue(cacheStatus.post(CacheStatusBatch(emptyList())).isSuccessful)
+
+        assertEquals(compiled.base(), store.current())
+        assertEquals(1, compiled.hits("screens-refresh"))
+        assertEquals("access-2", tokens.loadSync()?.accessToken)
+        assertFalse(tokens.writes.contains("clear"))
+    }
+
+    @Test
+    fun `after falling back the hint is re-adopted on the next validated config once the base is healthy again`() = runBlocking {
+        compiled.hint = next.base().toString()
+        config.fetch()
+        next.server.shutdown()
+        cacheStatus.post(CacheStatusBatch(emptyList()))
+        assertEquals(compiled.base(), store.current())
+
+        assertEquals("probe fails while it is still down", ConfigRepository.Result.NotModified, config.fetch())
+        assertEquals(compiled.base(), store.current())
+        assertEquals(emptyList<String>(), tokens.writes)
+
+        val revived = host()
+        compiled.hint = revived.base().toString()
+        assertTrue(config.fetch() is ConfigRepository.Result.Applied)
+        assertEquals(revived.base(), store.current())
     }
 
     @Test

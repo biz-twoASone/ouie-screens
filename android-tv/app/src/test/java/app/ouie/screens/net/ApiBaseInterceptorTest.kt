@@ -5,8 +5,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -60,5 +62,86 @@ class ApiBaseInterceptorTest {
         compiled.enqueue(MockResponse())
         get(compiled.url("/functions/v1/screens-config"))
         assertEquals("/functions/v1/screens-config", compiled.takeRequest().path)
+    }
+
+    private val adoptedBase get() = adopted.url("/api/screens/v1/")
+    private val adoptedFile get() = File(tmp.root, "api_base_url")
+
+    @Test
+    fun `a connect failure on the adopted base replays the call on the compiled base and stays there`() {
+        store.set(adoptedBase)
+        adopted.shutdown()
+        compiled.enqueue(MockResponse().setBody("first"))
+        compiled.enqueue(MockResponse().setBody("second"))
+
+        get(compiled.url("/functions/v1/screens-config"))
+        get(compiled.url("/functions/v1/screens-heartbeat"))
+
+        assertEquals("/functions/v1/screens-config", compiled.takeRequest().path)
+        assertEquals("/functions/v1/screens-heartbeat", compiled.takeRequest().path)
+        assertEquals(compiled.url("/functions/v1/"), store.current())
+        assertFalse(adoptedFile.exists())
+    }
+
+    @Test
+    fun `a 5xx from the adopted base replays the call on the compiled base`() {
+        store.set(adoptedBase)
+        adopted.enqueue(MockResponse().setResponseCode(503))
+        compiled.enqueue(MockResponse().setBody("ok"))
+
+        val code = client.newCall(Request.Builder().url(compiled.url("/functions/v1/screens-config")).build())
+            .execute().use { it.code }
+
+        assertEquals(200, code)
+        assertEquals(1, adopted.requestCount)
+        assertEquals(compiled.url("/functions/v1/"), store.current())
+    }
+
+    @Test
+    fun `a connection dropped mid-call on the adopted base falls back too`() {
+        store.set(adoptedBase)
+        adopted.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+        adopted.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+        compiled.enqueue(MockResponse())
+
+        get(compiled.url("/functions/v1/screens-config"))
+
+        assertEquals(1, compiled.requestCount)
+        assertEquals(compiled.url("/functions/v1/"), store.current())
+    }
+
+    @Test
+    fun `a 4xx from the adopted base is the answer and does not forget the base`() {
+        store.set(adoptedBase)
+        adopted.enqueue(MockResponse().setResponseCode(404))
+
+        val code = client.newCall(Request.Builder().url(compiled.url("/functions/v1/screens-config")).build())
+            .execute().use { it.code }
+
+        assertEquals(404, code)
+        assertEquals(0, compiled.requestCount)
+        assertEquals(adoptedBase, store.current())
+    }
+
+    @Test
+    fun `when the compiled base also fails its answer is returned`() {
+        store.set(adoptedBase)
+        adopted.enqueue(MockResponse().setResponseCode(502))
+        compiled.enqueue(MockResponse().setResponseCode(500))
+
+        val code = client.newCall(Request.Builder().url(compiled.url("/functions/v1/screens-config")).build())
+            .execute().use { it.code }
+
+        assertEquals(500, code)
+    }
+
+    @Test
+    fun `a failing media URL never forgets the adopted base`() {
+        store.set(adoptedBase)
+        unrelated.enqueue(MockResponse().setResponseCode(503))
+
+        get(unrelated.url("/media/abc.mp4"))
+
+        assertEquals(adoptedBase, store.current())
     }
 }

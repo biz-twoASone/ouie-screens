@@ -19,11 +19,14 @@ import okhttp3.Route
  *   1. Try refresh via [refreshAdapter]. Success → use new access token.
  *   2. Refresh failed AND we have a persisted identity token →
  *      try identity recovery via [recoveryAdapter]. Success → use new tokens.
- *   3. Both failed → clear short-lived tokens (identity preserved) and
- *      return null. OkHttp surfaces the 401 to the caller. App state
- *      transitions to Pairing on next boot; identity token survives so a
- *      future successful recovery (e.g. when the network heals) won't
- *      require dashboard re-pair.
+ *   3. Every step that ran was explicitly rejected by the server (401/403)
+ *      → clear short-lived tokens (identity preserved) and return null.
+ *      OkHttp surfaces the 401 to the caller. App state transitions to
+ *      Pairing on next boot; identity token survives so a future successful
+ *      recovery won't require dashboard re-pair. If any step failed for
+ *      another reason (transport error, 5xx, unreadable response) the tokens
+ *      are kept and null is returned: an unreachable host must never cost the
+ *      screen its pairing, and the next 401 retries the whole cascade.
  *
  * Why this cascade exists: PRIOR behavior was a single `catch (Throwable) →
  * tokenStore.clear() → null`. Any transient blip (network hiccup, brief
@@ -47,6 +50,15 @@ class TokenAuthenticator(
 
     private val mutex = Mutex()
 
+    private fun isAuthRejection(t: Throwable): Boolean {
+        val code = when (t) {
+            is RefreshFailedException -> t.httpCode
+            is RecoveryFailedException -> t.httpCode
+            else -> return false
+        }
+        return code == 401 || code == 403
+    }
+
     override fun authenticate(route: Route?, response: Response): Request? {
         val current = tokenStore.loadSync()
         val requestAccess = response.request.header("Authorization")
@@ -61,6 +73,8 @@ class TokenAuthenticator(
                         .build()
                 }
 
+                var rejected = true
+
                 // Step 1 — try refresh if we still have a refresh token.
                 if (current != null) {
                     try {
@@ -71,7 +85,8 @@ class TokenAuthenticator(
                             .build()
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (_: Throwable) {
+                    } catch (t: Throwable) {
+                        rejected = rejected && isAuthRejection(t)
                         // Fall through to identity recovery.
                     }
                 }
@@ -93,15 +108,16 @@ class TokenAuthenticator(
                             .build()
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (_: Throwable) {
-                        // Fall through to clear+strand.
+                    } catch (t: Throwable) {
+                        rejected = rejected && isAuthRejection(t)
+                        // Fall through to the clear decision.
                     }
                 }
 
-                // Step 3 — both failed. Clear the short-lived tokens (keeping
-                // the identity token if any, so a future network heal can
-                // recover via the path above on the next OkHttp call).
-                tokenStore.clear()
+                // Step 3 — clear the short-lived tokens (keeping the identity
+                // token if any) only when the server explicitly rejected every
+                // attempt; otherwise keep them so the next call can retry.
+                if (rejected) tokenStore.clear()
                 null
             }
         }
