@@ -20,10 +20,16 @@ class ConfigStore(
     private val json: Json,
 ) {
 
-    init { dir.mkdirs() }
+    init {
+        dir.mkdirs()
+        // ETags saved before ConfigDto carried api_base_url belong to payloads
+        // whose hint the old parser dropped; replaying one would get a 304 and
+        // hide the hint until the config next changed. Forget them once.
+        File(dir, LEGACY_ETAG_FILE).delete()
+    }
 
     private val configFile get() = File(dir, "config.json")
-    private val etagFile   get() = File(dir, "config.etag")
+    private val etagFile   get() = File(dir, ETAG_FILE)
 
     fun save(config: ConfigDto, eTag: String?) {
         configFile.writeText(json.encodeToString(ConfigDto.serializer(), config))
@@ -41,4 +47,9 @@ class ConfigStore(
 
     fun loadETag(): String? =
         if (etagFile.exists()) etagFile.readText().trim().ifBlank { null } else null
+
+    private companion object {
+        const val LEGACY_ETAG_FILE = "config.etag"
+        const val ETAG_FILE = "config-v2.etag"
+    }
 }

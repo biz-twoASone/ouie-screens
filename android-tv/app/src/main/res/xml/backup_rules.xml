@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <exclude domain="sharedpref" path="signage_tokens.xml" />
+    <!-- A restored adopted API base could name a host this install never validated. -->
+    <exclude domain="file" path="signage/api_base_url" />
 </full-backup-content>

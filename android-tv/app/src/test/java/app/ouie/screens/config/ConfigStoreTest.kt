@@ -39,8 +39,11 @@ class ConfigStoreTest {
     @Test
     fun `corrupt stored config is dropped silently`() {
         val dir = tmp.newFolder()
+        ConfigStore(dir, json).save(
+            ConfigDto("sha256:xyz", DeviceDto("dev-1", "store-1", null, "Asia/Jakarta")),
+            eTag = "\"sha256:xyz\"",
+        )
         java.io.File(dir, "config.json").writeText("this is not json {")
-        java.io.File(dir, "config.etag").writeText("\"sha256:xyz\"")
         val store = ConfigStore(dir, json)
         assertNull(store.loadConfig())
         // ETag is still present; we'll happily re-send it with the next GET

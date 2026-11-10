@@ -17,6 +17,7 @@ import app.ouie.screens.fcm.FcmTokenSource
 import app.ouie.screens.fcm.SyncNowBroadcast
 import app.ouie.screens.heartbeat.ClockSkewTracker
 import app.ouie.screens.heartbeat.HeartbeatScheduler
+import app.ouie.screens.net.ApiBaseAdopter
 import app.ouie.screens.net.CacheStatusApi
 import app.ouie.screens.net.ConfigApi
 import app.ouie.screens.net.HeartbeatApi
@@ -55,6 +56,7 @@ class RunningCoordinator(
     private val syncNow: SyncNowBroadcast,
     private val fcmReceiptTracker: FcmReceiptTracker,
     private val apkInstaller: ApkInstaller,
+    private val apiBaseAdopter: ApiBaseAdopter,
 ) {
 
     private var scope: CoroutineScope? = null
@@ -87,7 +89,7 @@ class RunningCoordinator(
 
         val configDir = File(context.filesDir, "signage/config")
         val configStore = ConfigStore(configDir, json)
-        val configRepo = ConfigRepository(configApi, configStore)
+        val configRepo = ConfigRepository(configApi, configStore, apiBaseAdopter)
         configRepoRef = configRepo
 
         val knownIds: List<String> = configRepo.current.value?.media?.map { it.id } ?: emptyList()

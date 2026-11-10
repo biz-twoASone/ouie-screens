@@ -11,7 +11,11 @@ import app.ouie.screens.fcm.FcmReceiptTracker
 import app.ouie.screens.fcm.FcmTokenSource
 import app.ouie.screens.fcm.SyncNowBroadcast
 import app.ouie.screens.heartbeat.ClockSkewTracker
+import app.ouie.screens.net.ApiBaseAdopter
+import app.ouie.screens.net.ApiBaseProbe
+import app.ouie.screens.net.ApiBaseStore
 import app.ouie.screens.net.ApiClient
+import app.ouie.screens.net.HttpApiBaseProbe
 import app.ouie.screens.net.AuthInterceptor
 import app.ouie.screens.net.CacheStatusApi
 import app.ouie.screens.net.ConfigApi
@@ -36,6 +40,8 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
+import java.io.File
+import java.util.concurrent.TimeUnit
 
 val appModule = module {
     single { AppStateHolder() }
@@ -53,20 +59,34 @@ val appModule = module {
     single { FcmTokenSource(scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)) }
     single { FcmReceiptTracker() }
 
+    // Effective screens API base: compiled, or a validated server hint (ouie S5c).
+    // Every API client below routes through it; media/OTA clients do not.
+    single { ApiBaseStore(File(androidContext().filesDir, "signage/api_base_url"), ApiClient.compiledBaseUrl()) }
+    // Probe client: no base rewrite, no authenticator, no redirects (see HttpApiBaseProbe).
+    single(qualifier = named("api_base_probe")) {
+        ApiClient.baseHttpClient()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .callTimeout(20, TimeUnit.SECONDS)
+            .build()
+    }
+    single<ApiBaseProbe> { HttpApiBaseProbe(get(qualifier = named("api_base_probe")), get()) }
+    single { ApiBaseAdopter(store = get(), probe = get(), tokens = get(), errorBus = get()) }
+
     // Pairing client — no auth, no skew tracking.
-    single(qualifier = named("pairing")) { ApiClient.baseHttpClient().build() }
+    single(qualifier = named("pairing")) { ApiClient.baseHttpClient(get<ApiBaseStore>()).build() }
     single { ApiClient.retrofit(get(qualifier = named("pairing"))).create(PairingApi::class.java) }
 
     // Refresh client — no authenticator, to break the chicken-and-egg inside refresh.
     // Same DeviceApi exposes both refresh and recover (identity-token
     // recovery, PR-#826 mirror). Both adapters share the no-auth client.
-    single(qualifier = named("device_refresh")) { ApiClient.baseHttpClient().build() }
+    single(qualifier = named("device_refresh")) { ApiClient.baseHttpClient(get<ApiBaseStore>()).build() }
     single { ApiClient.retrofit(get(qualifier = named("device_refresh"))).create(DeviceApi::class.java) }
     single<RefreshAdapter> { RetrofitRefreshAdapter(get()) }
     single<RecoveryAdapter> { RetrofitRecoveryAdapter(get()) }
 
     single(qualifier = named("authed")) {
-        ApiClient.baseHttpClient()
+        ApiClient.baseHttpClient(get<ApiBaseStore>())
             .addInterceptor(AuthInterceptor(get()))
             .addInterceptor(DateHeaderInterceptor(get()))
             .authenticator(TokenAuthenticator(get(), get(), get()))
@@ -95,6 +115,7 @@ val appModule = module {
             syncNow = get(),
             fcmReceiptTracker = get(),
             apkInstaller = get(),
+            apiBaseAdopter = get(),
         )
     }
 
@@ -110,6 +131,7 @@ val appModule = module {
             tokenStore = get(),
             recoveryAdapter = get(),
             appState = get(),
+            apiBase = get(),
         )
     }
 }

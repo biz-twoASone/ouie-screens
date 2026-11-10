@@ -11,6 +11,8 @@ data class ConfigDto(
     val playlists: List<PlaylistDto> = emptyList(),
     val media: List<MediaDto> = emptyList(),
     val app_release: AppReleaseDto? = null,
+    /** Server-advertised API base (ouie S5c); absent means use the compiled base. See ApiBaseAdopter. */
+    val api_base_url: String? = null,
 )
 
 @Serializable

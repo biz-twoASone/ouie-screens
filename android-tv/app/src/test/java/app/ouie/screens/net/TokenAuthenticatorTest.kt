@@ -142,7 +142,7 @@ class TokenAuthenticatorTest {
         val tokenStore = FakeTokenStore(
             initial = DeviceTokens("old", "rt1", "dev-1", 3600),
         ).also { it.saveIdentity("identity-jwt-for-dev-1") }
-        val refreshAdapter = FakeRefreshAdapter { throw RuntimeException("refresh failed") }
+        val refreshAdapter = FakeRefreshAdapter { throw RefreshFailedException(401) }
         val recoveryAdapter = FakeRecoveryAdapter.alwaysFails()
         val authenticator = TokenAuthenticator(tokenStore, refreshAdapter, recoveryAdapter)
         val client = OkHttpClient.Builder()
@@ -163,14 +163,85 @@ class TokenAuthenticatorTest {
         assertNotNull(tokenStore.loadIdentitySync())
     }
 
+    private fun failingAuthenticatorClient(
+        tokenStore: FakeTokenStore,
+        refresh: suspend () -> DeviceTokens,
+        recover: suspend () -> DeviceTokens,
+    ): OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(AuthInterceptor(tokenStore))
+        .authenticator(TokenAuthenticator(tokenStore, FakeRefreshAdapter(refresh), FakeRecoveryAdapter(recover)))
+        .build()
+
     @Test
-    fun `refresh failure with no identity token falls straight through to clear`() = runBlocking {
+    fun `transport failure of refresh and recovery keeps the tokens`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(401))
+        val tokenStore = FakeTokenStore(DeviceTokens("old", "rt1", "dev-1", 3600)).also { it.saveIdentity("identity") }
+        val client = failingAuthenticatorClient(
+            tokenStore,
+            refresh = { throw java.net.ConnectException("down") },
+            recover = { throw java.net.SocketTimeoutException("down") },
+        )
+
+        val response = client.newCall(Request.Builder().url(server.url("/x")).build()).execute()
+
+        assertEquals(401, response.code)
+        assertEquals("rt1", tokenStore.loadSync()?.refreshToken)
+        assertNotNull(tokenStore.loadIdentitySync())
+    }
+
+    @Test
+    fun `5xx from refresh and recovery keeps the tokens`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(401))
+        val tokenStore = FakeTokenStore(DeviceTokens("old", "rt1", "dev-1", 3600)).also { it.saveIdentity("identity") }
+        val client = failingAuthenticatorClient(
+            tokenStore,
+            refresh = { throw RefreshFailedException(503) },
+            recover = { throw RecoveryFailedException(500) },
+        )
+
+        client.newCall(Request.Builder().url(server.url("/x")).build()).execute()
+
+        assertNotNull(tokenStore.loadSync())
+    }
+
+    @Test
+    fun `a rejected refresh followed by an unreachable recovery keeps the tokens`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(401))
+        val tokenStore = FakeTokenStore(DeviceTokens("old", "rt1", "dev-1", 3600)).also { it.saveIdentity("identity") }
+        val client = failingAuthenticatorClient(
+            tokenStore,
+            refresh = { throw RefreshFailedException(401) },
+            recover = { throw java.net.ConnectException("down") },
+        )
+
+        client.newCall(Request.Builder().url(server.url("/x")).build()).execute()
+
+        assertNotNull(tokenStore.loadSync())
+    }
+
+    @Test
+    fun `an unreachable refresh followed by a rejected recovery keeps the tokens`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(401))
+        val tokenStore = FakeTokenStore(DeviceTokens("old", "rt1", "dev-1", 3600)).also { it.saveIdentity("identity") }
+        val client = failingAuthenticatorClient(
+            tokenStore,
+            refresh = { throw java.net.ConnectException("down") },
+            recover = { throw RecoveryFailedException(403) },
+        )
+
+        client.newCall(Request.Builder().url(server.url("/x")).build()).execute()
+
+        assertNotNull(tokenStore.loadSync())
+    }
+
+    @Test
+    fun `refresh rejected with no identity token falls straight through to clear`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(401))
 
         val tokenStore = FakeTokenStore(
             initial = DeviceTokens("old", "rt1", "dev-1", 3600),
         ) // no identity token saved
-        val refreshAdapter = FakeRefreshAdapter { throw RuntimeException("refresh failed") }
+        val refreshAdapter = FakeRefreshAdapter { throw RefreshFailedException(401) }
         val recoveryAdapter = FakeRecoveryAdapter.alwaysReturns {
             // Should never be called — gated on identity token presence.
             throw IllegalStateException("recovery should not run without identity token")

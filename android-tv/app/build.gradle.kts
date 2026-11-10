@@ -47,12 +47,23 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Baked at build time from env or gradle.properties (see README for override).
-        // Defaults to ouie PROD; override locally with -PSUPABASE_URL=... for STG smoke.
+        // Compiled screens API base, baked at build time; the app uses it until
+        // a server-sent api_base_url hint is validated and adopted, and returns
+        // to it when the server stops sending one. Defaults to the legacy edge
+        // functions under SUPABASE_URL (env or gradle property; defaults to ouie
+        // PROD; override locally with -PSUPABASE_URL=... for STG smoke). Bake a
+        // Next base, whose responses carry the hint, with
+        // -PSCREENS_COMPILED_API_BASE_URL=https://<host>/api/screens/v1/
+        // (gradle property only, so a stray shell variable cannot repoint a build).
         val supabaseUrl = (project.findProperty("SUPABASE_URL") as String?)
             ?: System.getenv("SUPABASE_URL")
             ?: "https://glvoigzqwtpgkemnaubo.supabase.co"
-        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        val apiBaseUrl = (project.findProperty("SCREENS_COMPILED_API_BASE_URL") as String?)
+            ?: (supabaseUrl.trimEnd('/') + "/functions/v1/")
+        require(Regex("^https?://[^/?#\\s]+/([^?#\\s]*/)?$").matches(apiBaseUrl)) {
+            "SCREENS_COMPILED_API_BASE_URL must be an http(s) URL ending with '/' (Retrofit resolves endpoints relative to it)"
+        }
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
     signingConfigs {
@@ -161,6 +172,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.okhttp.tls)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
 }
